@@ -38,12 +38,24 @@ bot.on('polling_error', (error) => {
 
 console.log('🚀 El León ha aterrizado en la nube (Railway). Listo para rugir.');
 
-// Configuración para servir el Dashboard (Vite)
-app.use(express.static(path.join(__dirname, 'dist')));
+import express from 'express';
+import fs from 'fs';
 
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
-});
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Configuración para servir el Dashboard (Vite)
+const distPath = path.join(__dirname, 'dist');
+
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+} else {
+  console.warn('⚠️ Carpeta "dist" no encontrada. El dashboard no estará disponible hasta que se construya el proyecto.');
+  app.get('/', (req, res) => res.send('🦁 Agente Leones está Vivo, pero el Dashboard aún se está cocinando...'));
+}
 
 app.listen(PORT, () => {
   console.log(`📡 Servidor de Dashboard Pro escuchando en puerto ${PORT}`);
