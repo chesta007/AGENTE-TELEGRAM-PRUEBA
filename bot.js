@@ -36,7 +36,7 @@ bot.on('polling_error', (error) => {
   }
 });
 
-console.log('🚀 El León ha aterrizado en la nube (Railway). Listo para rugir.');
+console.log('💠 Iris AI ha aterrizado en la nube (Railway). Lista para rugir.');
 
 import express from 'express';
 import fs from 'fs';
@@ -122,8 +122,8 @@ bot.on('message', async (msg) => {
       content: m.content
     }));
 
-    // 5. Obtener System Prompt Dinámico
-    let systemPrompt = 'Eres el Agente Leones, un asistente experto, profesional y resolutivo.';
+    // 5. Obtener System Prompt Dinámico (Identidad: Iris AI)
+    let systemPrompt = 'Hola, soy Iris, la inteligencia artificial de Alcance. Soy un asistente experto, profesional y resolutivo que utiliza la base de conocimientos de la empresa para brindar soluciones precisas.';
     const { data: contextData } = await supabase
       .from('agent_context')
       .select('system_prompt')
@@ -180,8 +180,8 @@ bot.on('message', async (msg) => {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'HTTP-Referer': 'https://github.com/AgenteLeones',
-        'X-Title': 'Agente Leones'
+        'HTTP-Referer': 'https://github.com/AlcanceAI',
+        'X-Title': 'Iris AI Command Center'
       },
       body: JSON.stringify({
         model: 'meta-llama/llama-3.3-70b-instruct',
@@ -215,6 +215,6 @@ bot.on('message', async (msg) => {
 
   } catch (error) {
     console.error('🔴 Error Crítico en bot.js:', error.message);
-    bot.sendMessage(telegramId, '🦁 El León está procesando información... (Intenta en un momento)');
+    bot.sendMessage(telegramId, '💠 Iris está procesando información... (Intenta en un momento)');
   }
 });
