@@ -26,7 +26,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-[#0a0a0a] text-zinc-50">
+    <div className="flex h-screen bg-[#F8FAFC] text-slate-900 font-['Inter',_sans-serif]">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       <main className="flex-1 overflow-y-auto p-8">
         {renderContent()}
