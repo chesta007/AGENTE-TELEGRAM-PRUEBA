@@ -158,11 +158,11 @@ export function Chats() {
               className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-all ${selectedContactId === c.id ? 'bg-zinc-800' : 'bg-zinc-800/20 hover:bg-zinc-800/50'}`}
             >
               <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-white flex-shrink-0">
-                {getInitials(c.name)}
+                {getInitials(c.full_name)}
               </div>
               <div className="flex-1 overflow-hidden">
                 <div className="flex justify-between">
-                  <span className="font-semibold text-sm truncate pr-2">{c.name}</span>
+                  <span className="font-semibold text-sm truncate pr-2">{c.full_name}</span>
                   <span className="text-xs text-zinc-400 whitespace-nowrap">{c.last_interaction ? formatTime(c.last_interaction) : ''}</span>
                 </div>
                 <p className="text-xs text-zinc-400 truncate">{c.status}</p>
@@ -177,10 +177,10 @@ export function Chats() {
           <>
             <div className="p-4 border-b border-zinc-800 flex items-center gap-3 flex-shrink-0">
               <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center font-bold text-white">
-                {getInitials(selectedContact.name)}
+                {getInitials(selectedContact.full_name)}
               </div>
               <div>
-                <h3 className="font-semibold">{selectedContact.name}</h3>
+                <h3 className="font-semibold">{selectedContact.full_name}</h3>
                 <p className="text-xs text-zinc-400">{selectedContact.phone || selectedContact.city}</p>
               </div>
             </div>
