@@ -6,3 +6,9 @@ coverage/
 *.log
 .env*
 !.env.example
+.railway/
+.tmp/
+tmp/
+*.tmp
+.cache/
+.npm/
