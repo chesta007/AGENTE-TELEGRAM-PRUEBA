@@ -1,6 +1,11 @@
 import 'dotenv/config';
 import TelegramBot from 'node-telegram-bot-api';
 import { createClient } from '@supabase/supabase-js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // --- CONFIGURACIÓN DE VARIABLES DE ENTORNO ---
 const {
@@ -33,13 +38,15 @@ bot.on('polling_error', (error) => {
 
 console.log('🚀 El León ha aterrizado en la nube (Railway). Listo para rugir.');
 
-// Railway requiere que la aplicación escuche en un puerto, incluso si es solo un bot de polling.
-import express from 'express';
-const app = express();
-const PORT = process.env.PORT || 3000;
-app.get('/', (req, res) => res.send('🦁 Agente Leones está Vivo y Rugiendo!'));
+// Configuración para servir el Dashboard (Vite)
+app.use(express.static(path.join(__dirname, 'dist')));
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
 app.listen(PORT, () => {
-  console.log(`📡 Servidor de salud escuchando en puerto ${PORT}`);
+  console.log(`📡 Servidor de Dashboard Pro escuchando en puerto ${PORT}`);
 });
 
 // --- LÓGICA PRINCIPAL ---
