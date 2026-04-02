@@ -8,6 +8,7 @@ export function Dashboard({ darkMode }: { darkMode: boolean }) {
     messagesToday: 0,
     contacts: 0,
     balance: 0,
+    spending: 0,
     totalTokens: 0
   });
   const [loading, setLoading] = useState(true);
@@ -21,18 +22,27 @@ export function Dashboard({ darkMode }: { darkMode: boolean }) {
       const { count: contactsCount } = await supabase.from('contacts').select('*', { count: 'exact', head: true });
 
       let currentBalance = 0;
+      let totalUsage = 0;
       try {
         const orResponse = await fetch('https://openrouter.ai/api/v1/auth/key', {
           headers: { 'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}` }
         });
         const orData = await orResponse.json();
         currentBalance = orData.data?.limit - orData.data?.usage || 0;
+        totalUsage = orData.data?.usage || 0;
       } catch (e) { console.error("Balance fetch failed", e); }
 
       const { data: tokensData } = await supabase.from('messages').select('tokens');
       const totalTokens = (tokensData || []).reduce((acc, curr) => acc + (Number(curr.tokens) || 0), 0);
 
-      setStats({ docs: docsCount || 0, messagesToday: msgCount || 0, contacts: contactsCount || 0, balance: currentBalance, totalTokens: totalTokens });
+      setStats({ 
+        docs: docsCount || 0, 
+        messagesToday: msgCount || 0, 
+        contacts: contactsCount || 0, 
+        balance: currentBalance, 
+        spending: totalUsage,
+        totalTokens: totalTokens 
+      });
     } catch (err) {
       console.error('Error fetching dashboard stats:', err);
     } finally {
@@ -42,23 +52,32 @@ export function Dashboard({ darkMode }: { darkMode: boolean }) {
 
   useEffect(() => {
     fetchStats();
-    const channel = supabase.channel('dashboard-stats-v3').on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchStats()).on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, () => fetchStats()).on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => fetchStats()).subscribe();
-    return () => { supabase.removeChannel(channel); };
+    // Actualización de tokens y mensajes cada vez que hay cambios en Supabase
+    const channel = supabase.channel('dashboard-stats-v4').on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchStats()).on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, () => fetchStats()).on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => fetchStats()).subscribe();
+    
+    // Polling de saldo cada 5 minutos (evitar saturar API externa)
+    const interval = setInterval(fetchStats, 5 * 60 * 1000);
+
+    return () => { 
+      supabase.removeChannel(channel);
+      clearInterval(interval);
+    };
   }, []);
 
   const cards = [
     { title: 'Documentos', value: stats.docs, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-500/10' },
     { title: 'Mensajes Hoy', value: stats.messagesToday, icon: MessageSquare, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
     { title: 'Contactos CRM', value: stats.contacts, icon: Users, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
+    { title: 'Gasto Total (USD)', value: `$${Number(stats.spending).toFixed(3)}`, icon: TrendingUp, color: 'text-rose-500', bg: 'bg-rose-500/10' },
     { title: 'Saldo Iris', value: `$${Number(stats.balance).toFixed(2)}`, icon: TrendingUp, color: 'text-amber-500', bg: 'bg-amber-500/10' },
-    { title: 'Tokens Usados', value: stats.totalTokens.toLocaleString(), icon: TrendingUp, color: 'text-rose-500', bg: 'bg-rose-500/10' },
+    { title: 'Tokens Usados', value: stats.totalTokens.toLocaleString(), icon: TrendingUp, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
   ];
 
   return (
     <div className="space-y-8">
       <div>
-        <h2 className={`text-3xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>Dashboard</h2>
-        <p className={`${darkMode ? 'text-slate-500' : 'text-slate-500'} mt-1 font-medium`}>Resumen de actividad en tiempo real de Iris AI.</p>
+        <h2 className={`text-4xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>Iris <span className="text-[#0047FF]">AI</span> Analytics</h2>
+        <p className={`${darkMode ? 'text-slate-500' : 'text-slate-500'} mt-1 font-medium`}>Panel de control estratégico y monitoreo de recursos.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
