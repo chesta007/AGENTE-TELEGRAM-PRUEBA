@@ -202,12 +202,17 @@ bot.on('message', async (msg) => {
     // 8. Responder en Telegram
     await bot.sendMessage(chatId, aiResponse);
 
-    // 9. Persistir respuesta de IA y actualizar contacto
+    // 9. Persistir respuesta de IA con contador de tokens y actualizar contacto
+    const tokensUsed = data.usage?.total_tokens || 0;
+    
     await supabase.from('messages').insert([{
       contact_id: contact.id,
       content: aiResponse,
-      sender: 'agent'
+      sender: 'agent',
+      tokens: tokensUsed
     }]);
+
+    console.log(`📊 Consumo de la respuesta: ${tokensUsed} tokens.`);
 
     await supabase.from('contacts').update({ 
       last_interaction: new Date().toISOString() 

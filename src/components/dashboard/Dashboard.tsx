@@ -6,7 +6,9 @@ export function Dashboard() {
   const [stats, setStats] = useState({
     docs: 0,
     messagesToday: 0,
-    contacts: 0
+    contacts: 0,
+    balance: 0,
+    totalTokens: 0
   });
   const [loading, setLoading] = useState(true);
 
@@ -17,7 +19,7 @@ export function Dashboard() {
         .from('documents')
         .select('*', { count: 'exact', head: true });
 
-      // 2. Chats hoy (mensajes desde las 00:00 de hoy)
+      // 2. Chats hoy
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const { count: msgCount } = await supabase
@@ -30,10 +32,29 @@ export function Dashboard() {
         .from('contacts')
         .select('*', { count: 'exact', head: true });
 
+      // 4. Saldo OpenRouter
+      // Nota: Fetch directo a OpenRouter auth/key (Requiere que el token tenga permisos)
+      let currentBalance = 0;
+      try {
+        const orResponse = await fetch('https://openrouter.ai/api/v1/auth/key', {
+          headers: { 'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}` }
+        });
+        const orData = await orResponse.json();
+        currentBalance = orData.data?.limit - orData.data?.usage || 0;
+      } catch (e) { console.error("Balance fetch failed", e); }
+
+      // 5. Acumulado de Tokens
+      const { data: tokensData } = await supabase
+        .from('messages')
+        .select('tokens');
+      const totalTokens = (tokensData || []).reduce((acc, curr) => acc + (Number(curr.tokens) || 0), 0);
+
       setStats({
         docs: docsCount || 0,
         messagesToday: msgCount || 0,
-        contacts: contactsCount || 0
+        contacts: contactsCount || 0,
+        balance: currentBalance,
+        totalTokens: totalTokens
       });
     } catch (err) {
       console.error('Error fetching dashboard stats:', err);
@@ -47,7 +68,7 @@ export function Dashboard() {
     
     // Suscribirse a cambios para actualización automática
     const channel = supabase
-      .channel('dashboard-stats')
+      .channel('dashboard-stats-v2')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchStats())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, () => fetchStats())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => fetchStats())
@@ -59,9 +80,11 @@ export function Dashboard() {
   }, []);
 
   const cards = [
-    { title: 'Total Documentos', value: stats.docs, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50' },
+    { title: 'Documentos', value: stats.docs, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-50' },
     { title: 'Mensajes Hoy', value: stats.messagesToday, icon: MessageSquare, color: 'text-indigo-500', bg: 'bg-indigo-50' },
     { title: 'Contactos CRM', value: stats.contacts, icon: Users, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+    { title: 'Saldo Iris', value: `$${Number(stats.balance).toFixed(2)}`, icon: TrendingUp, color: 'text-amber-500', bg: 'bg-amber-50' },
+    { title: 'Tokens Usados', value: stats.totalTokens.toLocaleString(), icon: TrendingUp, color: 'text-rose-500', bg: 'bg-rose-50' },
   ];
 
   return (
