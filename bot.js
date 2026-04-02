@@ -113,11 +113,10 @@ bot.on('message', async (msg) => {
       .from('messages')
       .select('content, sender')
       .eq('contact_id', contact.id)
-      .lt('created_at', new Date().toISOString()) // Solo mensajes anteriores al actual
+      .lt('created_at', new Date().toISOString())
       .order('created_at', { ascending: false })
       .limit(6);
 
-    // Mapear historial al formato de Grok (assistant roles)
     const history = (historyData || []).reverse().map(m => ({
       role: m.sender === 'user' ? 'user' : 'assistant',
       content: m.content
@@ -135,30 +134,58 @@ bot.on('message', async (msg) => {
       systemPrompt = contextData.system_prompt;
     }
 
-    // 6. Construir Array de Mensajes para Grok (Orden Estricto)
-    // Orden: System -> Historial -> Mensaje actual del usuario
-    const messagesForGrok = [
-      { role: 'system', content: systemPrompt },
-      ...history.filter(h => h.content !== text), // Evitar duplicar el actual si ya subió
+    // 6. RAG: Recuperar conocimiento de documentos indexados
+    let knowledgeBase = "";
+    try {
+      const { data: docs } = await supabase
+        .from('documents')
+        .select('name, storage_path')
+        .eq('status', 'Indexado');
+
+      if (docs && docs.length > 0) {
+        console.log(`📚 Consultando base de conocimientos (${docs.length} documentos)...`);
+        for (const doc of docs) {
+          const { data: fileData, error: downloadError } = await supabase.storage
+            .from('knowledge')
+            .download(doc.storage_path);
+          
+          if (!downloadError && fileData) {
+            const content = await fileData.text();
+            knowledgeBase += `\n--- Información de ${doc.name} ---\n${content}\n`;
+          }
+        }
+      }
+    } catch (ragErr) {
+      console.error('Error en RAG:', ragErr);
+    }
+
+    // 7. Construir Array de Mensajes para la IA (Orden Estricto con RAG)
+    const knowledgePrompt = knowledgeBase 
+      ? `BASE DE CONOCIMIENTO PRIORITARIA:\n${knowledgeBase}\n\nInstrucción: Responde utilizando PRIMERO la información de la base de conocimiento arriba. Si no encuentras la respuesta ahí, usa tu conocimiento general.`
+      : "";
+
+    const messagesForAI = [
+      { role: 'system', content: `${systemPrompt}\n\n${knowledgePrompt}` },
+      ...history,
       { role: 'user', content: text }
     ];
 
-    // 7. Acción de 'typing' y Llamada a OpenRouter
+    // 8. Acción de 'typing' y Llamada a OpenRouter
     await bot.sendChatAction(chatId, 'typing');
     
-    console.log(`🧠 Consultando a OpenRouter (Llama 3.3) con ${messagesForGrok.length} mensajes de contexto...`);
+    console.log(`🧠 Consultando a OpenRouter (Llama 3.3) con memoria + RAG...`);
     
     const response = await fetch(`https://openrouter.ai/api/v1/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'HTTP-Referer': 'https://github.com/AgenteLeones', // Opcional para OpenRouter
+        'HTTP-Referer': 'https://github.com/AgenteLeones',
         'X-Title': 'Agente Leones'
       },
       body: JSON.stringify({
         model: 'meta-llama/llama-3.3-70b-instruct',
-        messages: messagesForGrok,
+        messages: messagesForAI,
         stream: false
       })
     });
