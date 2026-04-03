@@ -3,7 +3,7 @@ import { Search, Plus, Loader2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { supabase } from '@/lib/supabase';
 
-export function CRM() {
+export function CRM({ darkMode }: { darkMode: boolean }) {
   const [contacts, setContacts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedContact, setSelectedContact] = useState<any>(null);
@@ -17,17 +17,9 @@ export function CRM() {
     setLoading(true);
     try {
       let query = supabase.from('contacts').select('*');
-      
-      if (filter !== 'Todos') {
-        query = query.eq('status', filter);
-      }
-      
-      if (searchQuery) {
-        query = query.ilike('name', `%${searchQuery}%`);
-      }
-      
+      if (filter !== 'Todos') query = query.eq('status', filter);
+      if (searchQuery) query = query.ilike('name', `%${searchQuery}%`);
       const { data, error } = await query.order('id', { ascending: false });
-      
       if (error) throw error;
       setContacts(data || []);
     } catch (error) {
@@ -48,14 +40,8 @@ export function CRM() {
   const handleAddContact = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { data, error } = await supabase
-        .from('contacts')
-        .insert([newContact])
-        .select()
-        .single();
-        
+      const { data, error } = await supabase.from('contacts').insert([newContact]).select().single();
       if (error) throw error;
-      
       setContacts([data, ...contacts]);
       setIsAddOpen(false);
       setNewContact({ name: '', phone: '', city: '', status: 'Nuevo' });
@@ -64,77 +50,100 @@ export function CRM() {
     }
   };
 
+  const statusColors: any = {
+    'Nuevo': 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+    'En contacto': 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
+    'Cliente': 'bg-rose-500/10 text-rose-500 border-rose-500/20'
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h2 className="text-3xl font-bold">CRM</h2>
+    <div className="space-y-6 md:space-y-8">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+        <div>
+          <h2 className={`text-3xl md:text-4xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>CRM</h2>
+          <p className="text-slate-500 font-medium text-sm mt-1">Gestión de prospectos y clientes de Iris AI.</p>
+        </div>
         <button 
           onClick={() => setIsAddOpen(true)}
-          className="flex items-center gap-2 bg-indigo-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-600 transition-all"
+          className="flex items-center justify-center gap-2 bg-[#0047FF] text-white px-6 py-4 md:py-3 rounded-2xl font-bold shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
         >
-          <Plus size={20} /> Agregar contacto
+          <Plus size={20} /> <span className="md:hidden lg:inline text-sm">Nuevo Contacto</span>
         </button>
       </div>
 
-      <div className="flex justify-between items-center">
-        <div className="flex gap-2">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 w-full md:w-auto scrollbar-hide">
           {['Todos', 'Nuevo', 'En contacto', 'Cliente'].map(f => (
-            <button 
-              key={f} 
-              onClick={() => setFilter(f)}
-              className={`px-4 py-1.5 rounded-full text-sm transition-colors ${filter === f ? 'bg-indigo-500 text-white' : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'}`}
-            >
+            <button key={f} onClick={() => setFilter(f)} className={`whitespace-nowrap px-4 py-2 rounded-full text-xs font-bold transition-all ${filter === f ? 'bg-[#0047FF] text-white shadow-md' : (darkMode ? 'bg-zinc-800 text-slate-400 hover:bg-zinc-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200')}`}>
               {f}
             </button>
           ))}
         </div>
         
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" size={18} />
-          <input 
-            type="text" 
-            placeholder="Buscar por nombre..." 
-            value={searchQuery}
-            onChange={handleSearch}
-            className="bg-zinc-800 border-none rounded-lg pl-10 pr-4 py-2 w-64 focus:ring-2 focus:ring-indigo-500 outline-none text-zinc-100 placeholder:text-zinc-500"
-          />
+        <div className="relative w-full md:w-72">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+          <input type="text" placeholder="Buscar por nombre..." value={searchQuery} onChange={handleSearch} className={`w-full border-none rounded-2xl pl-12 pr-4 py-4 md:py-2.5 outline-none font-medium text-sm transition-all ${darkMode ? 'bg-zinc-900 text-white focus:ring-2 focus:ring-blue-500/30' : 'bg-white shadow-sm border border-slate-100 focus:ring-2 focus:ring-blue-500/20'}`} />
         </div>
       </div>
 
-      <div className="bg-[#111111] rounded-xl border border-zinc-800 overflow-hidden">
+      <div className={`rounded-[24px] border overflow-hidden transition-all ${darkMode ? 'bg-zinc-900/50 border-white/5' : 'bg-white border-slate-100 shadow-sm'}`}>
         {loading ? (
-          <div className="p-8 flex justify-center text-zinc-500">
-            <Loader2 className="animate-spin" size={24} />
-          </div>
+          <div className="p-20 flex justify-center"><Loader2 className="animate-spin text-[#0047FF]" size={32} /></div>
         ) : (
-          <table className="w-full text-left">
-            <thead className="bg-zinc-800/50 text-zinc-400 text-sm">
-              <tr>
-                <th className="p-4">Nombre</th>
-                <th className="p-4">Teléfono</th>
-                <th className="p-4">Ciudad</th>
-                <th className="p-4">Estado</th>
-                <th className="p-4">Última interacción</th>
-              </tr>
-            </thead>
-            <tbody>
+          <>
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left">
+                <thead className={`text-[10px] uppercase tracking-widest font-black ${darkMode ? 'bg-zinc-800/50 text-slate-500' : 'bg-slate-50 text-slate-400'}`}>
+                  <tr>
+                    <th className="p-5">Nombre</th>
+                    <th className="p-5">Teléfono</th>
+                    <th className="p-5">Ciudad</th>
+                    <th className="p-5">Estado</th>
+                    <th className="p-5 text-right">Última interacción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100/10">
+                  {contacts.length === 0 ? (
+                    <tr><td colSpan={5} className="p-20 text-center text-slate-500 font-medium italic">No hay contactos encontrados</td></tr>
+                  ) : (
+                    contacts.map(c => (
+                      <tr key={c.id} onClick={() => setSelectedContact(c)} className={`hover:bg-blue-500/[0.02] cursor-pointer transition-all ${darkMode ? 'hover:bg-white/[0.02]' : 'hover:bg-slate-50'}`}>
+                        <td className="p-5 font-bold text-sm tracking-tight">{c.name}</td>
+                        <td className="p-5 text-sm text-slate-500">{c.phone}</td>
+                        <td className="p-5 text-sm text-slate-500">{c.city}</td>
+                        <td className="p-5">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border ${statusColors[c.status] || 'bg-slate-500/10 text-slate-500 border-slate-500/20'}`}>
+                            {c.status}
+                          </span>
+                        </td>
+                        <td className="p-5 text-sm text-slate-400 text-right font-medium">{c.last_interaction ? new Date(c.last_interaction).toLocaleDateString() : '-'}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile List View */}
+            <div className="md:hidden divide-y divide-slate-100/10">
               {contacts.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="p-8 text-center text-zinc-500">No hay contactos encontrados</td>
-                </tr>
+                <div className="p-20 text-center text-slate-500 font-medium italic">No hay contactos encontrados</div>
               ) : (
                 contacts.map(c => (
-                  <tr key={c.id} onClick={() => setSelectedContact(c)} className="border-t border-zinc-800 hover:bg-zinc-800/50 cursor-pointer transition-all">
-                    <td className="p-4 font-semibold">{c.name}</td>
-                    <td className="p-4">{c.phone}</td>
-                    <td className="p-4">{c.city}</td>
-                    <td className="p-4"><span className="bg-zinc-800 px-2 py-1 rounded text-xs text-indigo-400">{c.status}</span></td>
-                    <td className="p-4 text-zinc-400">{c.last_interaction ? new Date(c.last_interaction).toLocaleDateString() : '-'}</td>
-                  </tr>
+                  <div key={c.id} onClick={() => setSelectedContact(c)} className="p-5 active:bg-blue-500/5 transition-all">
+                    <div className="flex justify-between items-start mb-1">
+                      <h4 className="font-black text-lg tracking-tight">{c.name}</h4>
+                      <span className={`px-2.5 py-1 rounded-full text-[9px] font-black border uppercase tracking-wider ${statusColors[c.status] || 'bg-slate-500/10 text-slate-500 border-slate-500/20'}`}>
+                        {c.status}
+                      </span>
+                    </div>
+                    <p className="text-sm text-slate-400 font-medium">{c.phone} • {c.city}</p>
+                  </div>
                 ))
               )}
-            </tbody>
-          </table>
+            </div>
+          </>
         )}
       </div>
 

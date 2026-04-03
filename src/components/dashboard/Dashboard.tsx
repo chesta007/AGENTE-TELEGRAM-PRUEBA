@@ -81,29 +81,29 @@ export function Dashboard({ darkMode }: { darkMode: boolean }) {
   ];
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h2 className={`text-4xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>Iris <span className="text-[#0047FF]">AI</span> Analytics</h2>
-        <p className={`${darkMode ? 'text-slate-500' : 'text-slate-500'} mt-1 font-medium`}>Panel de control estratégico y monitoreo de recursos.</p>
+    <div className="space-y-6 md:space-y-8">
+      <div className="px-2 md:px-0">
+        <h2 className={`text-3xl md:text-4xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>Iris <span className="text-[#0047FF]">AI</span> Analytics</h2>
+        <p className={`${darkMode ? 'text-slate-500' : 'text-slate-500'} mt-1 font-medium text-sm md:text-base`}>Panel de control estratégico y monitoreo de recursos.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
         {loading ? (
-          <div className="col-span-3 flex justify-center py-20">
+          <div className="col-span-1 sm:col-span-2 md:col-span-3 flex justify-center py-20">
             <Loader2 className="animate-spin text-[#0047FF]" size={40} />
           </div>
         ) : cards.map(card => (
-          <div key={card.title} className={`p-8 rounded-[24px] border transition-all duration-300 ${darkMode ? 'bg-zinc-900 border-white/5 hover:border-white/10' : 'bg-white border-slate-100 shadow-sm hover:shadow-xl hover:shadow-blue-500/5 hover:-translate-y-1'}`}>
-            <div className="flex justify-between items-start mb-8">
-              <div className={`p-3 rounded-2xl ${card.bg} ${card.color}`}>
-                <card.icon size={26} />
+          <div key={card.title} className={`p-6 md:p-8 rounded-[24px] border transition-all duration-300 ${darkMode ? 'bg-zinc-900 border-white/5 hover:border-white/10' : 'bg-white border-slate-100 shadow-sm hover:shadow-xl hover:shadow-blue-500/5 md:hover:-translate-y-1'}`}>
+            <div className="flex justify-between items-start mb-6 md:mb-8">
+              <div className={`p-3 md:p-4 rounded-2xl ${card.bg} ${card.color}`}>
+                <card.icon size={28} />
               </div>
               <div className={`flex items-center px-3 py-1 rounded-full text-[10px] font-black tracking-widest ${darkMode ? 'bg-emerald-500/10 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
                 LIVE
               </div>
             </div>
             <h3 className={`font-bold text-[10px] uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>{card.title}</h3>
-            <p className={`text-5xl font-black mt-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{card.value}</p>
+            <p className={`text-4xl md:text-5xl font-black mt-2 ${darkMode ? 'text-white' : 'text-slate-900'}`}>{card.value}</p>
           </div>
         ))}
       </div>
