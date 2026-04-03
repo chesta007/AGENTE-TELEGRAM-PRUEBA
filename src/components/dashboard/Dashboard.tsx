@@ -16,22 +16,26 @@ export function Dashboard({ darkMode }: { darkMode: boolean }) {
   const fetchStats = async () => {
     try {
       const { count: docsCount } = await supabase.from('documents').select('*', { count: 'exact', head: true });
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const { count: msgCount } = await supabase.from('messages').select('*', { count: 'exact', head: true }).gte('created_at', today.toISOString());
+      
+      // 2. Chats últimas 24 horas (Evitar problemas de zona horaria)
+      const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const { count: msgCount } = await supabase.from('messages')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', last24h.toISOString());
+        
       const { count: contactsCount } = await supabase.from('contacts').select('*', { count: 'exact', head: true });
 
+      // 4. Saldo OpenRouter vía Proxy Interno (Seguridad)
       let currentBalance = 0;
       let totalUsage = 0;
       try {
-        const orResponse = await fetch('https://openrouter.ai/api/v1/auth/key', {
-          headers: { 'Authorization': `Bearer ${import.meta.env.VITE_OPENROUTER_API_KEY}` }
-        });
+        const orResponse = await fetch('/api/balance');
         const orData = await orResponse.json();
-        currentBalance = orData.data?.limit - orData.data?.usage || 0;
-        totalUsage = orData.data?.usage || 0;
-      } catch (e) { console.error("Balance fetch failed", e); }
+        currentBalance = Number(orData.data?.limit) - Number(orData.data?.usage) || 0;
+        totalUsage = Number(orData.data?.usage) || 0;
+      } catch (e) { console.error("Balance proxy fetch failed", e); }
 
+      // 5. Acumulado de Tokens
       const { data: tokensData } = await supabase.from('messages').select('tokens');
       const totalTokens = (tokensData || []).reduce((acc, curr) => acc + (Number(curr.tokens) || 0), 0);
 

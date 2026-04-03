@@ -43,18 +43,32 @@ import fs from 'fs';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Configuración para servir el Dashboard (Vite)
 const distPath = path.join(__dirname, 'dist');
+
+// Endpoint Proxy para Saldo de OpenRouter (Seguridad)
+app.get('/api/balance', async (req, res) => {
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/auth/key', {
+      headers: { 'Authorization': `Bearer ${OPENROUTER_API_KEY}` }
+    });
+    const data = await response.json();
+    console.log('✅ Datos de OpenRouter recibidos con éxito');
+    res.json(data);
+  } catch (error) {
+    console.error('❌ Error consultando saldo en OpenRouter:', error);
+    res.status(500).json({ error: 'Failed to fetch balance' });
+  }
+});
 
 if (fs.existsSync(distPath)) {
   app.use(express.static(distPath));
+  // IMPORTANTE: Dejar las rutas de API antes que el catch-all '*'
   app.get('*', (req, res) => {
     res.sendFile(path.join(distPath, 'index.html'));
   });
 } else {
   console.warn('⚠️ Carpeta "dist" no encontrada. El dashboard no estará disponible hasta que se construya el proyecto.');
-  app.get('/', (req, res) => res.send('🦁 Agente Leones está Vivo, pero el Dashboard aún se está cocinando...'));
+  app.get('/', (req, res) => res.send('🦁 Iris AI está Viva, pero el Dashboard aún se está cocinando...'));
 }
 
 app.listen(PORT, () => {
