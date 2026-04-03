@@ -37,7 +37,10 @@ export function Dashboard({ darkMode }: { darkMode: boolean }) {
 
       // 5. Acumulado de Tokens
       const { data: tokensData } = await supabase.from('messages').select('tokens');
-      const totalTokens = (tokensData || []).reduce((acc, curr) => acc + (Number(curr.tokens) || 0), 0);
+      const tokensList = (tokensData || []).map(m => Number(m.tokens) || 0);
+      const totalTokens = tokensList.reduce((acc, curr) => acc + curr, 0);
+      
+      console.log(`📊 Tokens recuperados de la DB: [${totalTokens}] de ${tokensList.length} mensajes.`);
 
       setStats({ 
         docs: docsCount || 0, 
@@ -57,9 +60,9 @@ export function Dashboard({ darkMode }: { darkMode: boolean }) {
   useEffect(() => {
     fetchStats();
     // Actualización de tokens y mensajes cada vez que hay cambios en Supabase
-    const channel = supabase.channel('dashboard-stats-v4').on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchStats()).on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, () => fetchStats()).on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => fetchStats()).subscribe();
+    const channel = supabase.channel('dashboard-stats-v5').on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchStats()).on('postgres_changes', { event: '*', schema: 'public', table: 'documents' }, () => fetchStats()).on('postgres_changes', { event: '*', schema: 'public', table: 'contacts' }, () => fetchStats()).subscribe();
     
-    // Polling de saldo cada 5 minutos (evitar saturar API externa)
+    // Polling de saldo cada 5 minutos
     const interval = setInterval(fetchStats, 5 * 60 * 1000);
 
     return () => { 
@@ -70,10 +73,10 @@ export function Dashboard({ darkMode }: { darkMode: boolean }) {
 
   const cards = [
     { title: 'Documentos', value: stats.docs, icon: FileText, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-    { title: 'Mensajes Hoy', value: stats.messagesToday, icon: MessageSquare, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
+    { title: 'Mensajes 24h', value: stats.messagesToday, icon: MessageSquare, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
     { title: 'Contactos CRM', value: stats.contacts, icon: Users, color: 'text-emerald-500', bg: 'bg-emerald-500/10' },
-    { title: 'Gasto Total (USD)', value: `$${Number(stats.spending).toFixed(3)}`, icon: TrendingUp, color: 'text-rose-500', bg: 'bg-rose-500/10' },
-    { title: 'Saldo Iris', value: `$${Number(stats.balance).toFixed(2)}`, icon: TrendingUp, color: 'text-amber-500', bg: 'bg-amber-500/10' },
+    { title: 'Gasto Total (USD)', value: stats.spending > 0 ? `$${Number(stats.spending).toFixed(4)}` : 'Cargando...', icon: TrendingUp, color: 'text-rose-500', bg: 'bg-rose-500/10' },
+    { title: 'Saldo Iris', value: stats.balance > 0 ? `$${Number(stats.balance).toFixed(4)}` : 'Verificar API', icon: TrendingUp, color: 'text-amber-500', bg: 'bg-amber-500/10' },
     { title: 'Tokens Usados', value: stats.totalTokens.toLocaleString(), icon: TrendingUp, color: 'text-indigo-500', bg: 'bg-indigo-500/10' },
   ];
 
