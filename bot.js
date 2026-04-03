@@ -97,22 +97,23 @@ bot.on('message', async (msg) => {
   if (!text) return;
 
   try {
-    // 2. Gestión de Contacto (Check / Create)
+    // 2. Gestión de Contacto con Memoria de Identidad (Check / Update)
     let { data: contact, error: contactError } = await supabase
       .from('contacts')
       .select('*')
       .eq('phone', telegramId)
       .single();
 
+    const telegramName = msg.from?.first_name 
+      ? `${msg.from.first_name} ${msg.from.last_name || ''}`.trim() 
+      : 'Usuario Desconocido';
+
     if (contactError && contactError.code === 'PGRST116') {
-      const fullName = msg.from?.first_name 
-        ? `${msg.from.first_name} ${msg.from.last_name || ''}`.trim() 
-        : 'Usuario Desconocido';
-      
+      // Crear contacto por primera vez
       const { data: newContact, error: insertError } = await supabase
         .from('contacts')
         .insert([{ 
-          full_name: fullName, 
+          full_name: telegramName, 
           phone: telegramId, 
           status: 'Nuevo' 
         }])
@@ -121,25 +122,40 @@ bot.on('message', async (msg) => {
         
       if (insertError) throw new Error(`Error creando contacto: ${insertError.message}`);
       contact = newContact;
-      console.log(`👤 Nuevo contacto registrado: ${fullName}`);
+      console.log(`👤 Nuevo contacto registrado: ${telegramName}`);
     } else if (contactError) {
       throw contactError;
     }
 
     // 3. Persistir mensaje entrante del usuario
-    const { error: msgUserError } = await supabase.from('messages').insert([{
+    await supabase.from('messages').insert([{
       contact_id: contact.id,
       content: text,
       sender: 'user'
     }]);
-    if (msgUserError) console.error('Error guardando msj usuario:', msgUserError.message);
 
-    // 4. Recuperar Historial (Últimos 6 mensajes previos)
+    // 4. Preparar Contexto Personalizado para Iris
+    const hasName = contact.full_name && !contact.full_name.includes('Usuario Desconocido');
+    const hasCity = !!contact.city;
+    const hasPhone = !!contact.phone; // Siempre true en este caso pero se mantiene por lógica
+    
+    let identityContext = `CONTEXTO DEL USUARIO ACTUAL:
+    - ID Telegram: ${telegramId}
+    - Nombre registrado: ${contact.full_name || 'Desconocido'}
+    - Ciudad: ${contact.city || 'Desconocida'}
+    - Estado en CRM: ${contact.status}
+    
+    INSTRUCCIONES DE FLUJO:
+    1. Si ya conoces el nombre (${contact.full_name}), salúdalo personalmente: "¡Hola ${contact.full_name}! Qué bueno verte de nuevo...".
+    2. Si falta la ciudad (${hasCity ? 'YA LA TIENES' : 'FALTA'}), pídela de forma natural.
+    3. Si ya tienes Nombre y Ciudad, NO los vuelvas a preguntar. Salta directamente a resolver la duda técnica usando los documentos de Alcance.
+    4. Si ya tienes TODOS los datos básicos, confirma que pasarás su consulta a un asesor experto.`;
+
+    // 5. Recuperar Historial y Contexto del Agente
     const { data: historyData } = await supabase
       .from('messages')
       .select('content, sender')
       .eq('contact_id', contact.id)
-      .lt('created_at', new Date().toISOString())
       .order('created_at', { ascending: false })
       .limit(6);
 
@@ -148,17 +164,11 @@ bot.on('message', async (msg) => {
       content: m.content
     }));
 
-    // 5. Obtener System Prompt Dinámico (Identidad: Iris AI)
-    let systemPrompt = 'Hola, soy Iris, la inteligencia artificial de Alcance. Soy un asistente experto, profesional y resolutivo que utiliza la base de conocimientos de la empresa para brindar soluciones precisas.';
-    const { data: contextData } = await supabase
-      .from('agent_context')
-      .select('system_prompt')
-      .limit(1)
-      .single();
-      
-    if (contextData?.system_prompt) {
-      systemPrompt = contextData.system_prompt;
-    }
+    let systemPromptBase = 'Hola, soy Iris, la inteligencia artificial de Alcance. Soy un asistente experto y resolutivo.';
+    const { data: contextData } = await supabase.from('agent_context').select('system_prompt').limit(1).single();
+    if (contextData?.system_prompt) systemPromptBase = contextData.system_prompt;
+
+    const fullSystemPrompt = `${systemPromptBase}\n\n${identityContext}`;
 
     // 6. RAG: Recuperar conocimiento de documentos indexados
     let knowledgeBase = "";
@@ -191,7 +201,7 @@ bot.on('message', async (msg) => {
       : "";
 
     const messagesForAI = [
-      { role: 'system', content: `${systemPrompt}\n\n${knowledgePrompt}` },
+      { role: 'system', content: `${fullSystemPrompt}\n\n${knowledgePrompt}` },
       ...history,
       { role: 'user', content: text }
     ];
