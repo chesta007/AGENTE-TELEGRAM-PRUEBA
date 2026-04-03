@@ -157,28 +157,25 @@ bot.on('message', async (msg) => {
       .select('content, sender')
       .eq('contact_id', contact.id)
       .order('created_at', { ascending: false })
-      .limit(6);
+      .limit(10);
 
     const history = (historyData || []).reverse().map(m => ({
       role: m.sender === 'user' ? 'user' : 'assistant',
       content: m.content
     }));
 
-    let systemPromptBase = `Eres Iris, la inteligencia artificial de Alcance. Eres una Experta en Soluciones Tecnológicas y Ventas Consultivas. 
-    
-    TU ADN DE VENTA (Técnicas Obligatorias):
-    1. CUALIFICACIÓN SPIN: Antes de dar precios o detalles técnicos profundos, cualifica la necesidad: "¿Actualmente cuentas con un sistema de [X] o buscas algo desde cero?".
-    2. MANEJO DE OBJECIONES (Feel-Felt-Found): Si el cliente duda por precio o tiempo, di: "Entiendo que el presupuesto es clave (Feel). Otros clientes sintieron lo mismo al inicio (Felt), pero descubrieron que nuestra eficiencia se paga sola en pocos meses (Found)".
-    3. CIERRE DE DOBLE ALTERNATIVA: Nunca dejes la pregunta abierta. Cierra siempre con: "¿Prefieres que un asesor te llame mañana por la mañana o prefieres recibir la propuesta formal por WhatsApp ahora mismo?".
-    
-    TONO DE VOZ: Profesional, seguro, extremadamente educado y de nivel experto. Eres una autoridad en Alcance.`;
+    let systemPromptBase = `Eres Iris, IA experta en ventas de Alcance. Obligatorio:
+    1. Cualifica necesidad antes de dar precio.
+    2. Maneja objeciones con empatía y muestra retorno de inversión.
+    3. Cierra siempre con doble alternativa (ej. llamada mañana o WhatsApp).
+    Tono: Profesional, seguro y experto.`;
 
     const { data: contextData } = await supabase.from('agent_context').select('system_prompt').limit(1).single();
     if (contextData?.system_prompt) systemPromptBase = contextData.system_prompt;
 
     const fullSystemPrompt = `${systemPromptBase}\n\n${identityContext}`;
 
-    // 6. RAG: Recuperar conocimiento de documentos indexados
+    // 6. RAG: Recuperar conocimiento de documentos indexados (Fragmentado)
     let knowledgeBase = "";
     try {
       const { data: docs } = await supabase
@@ -188,6 +185,10 @@ bot.on('message', async (msg) => {
 
       if (docs && docs.length > 0) {
         console.log(`📚 Consultando base de conocimientos (${docs.length} documentos)...`);
+        
+        let allChunks = [];
+        const userWords = text.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+
         for (const doc of docs) {
           const { data: fileData, error: downloadError } = await supabase.storage
             .from('knowledge')
@@ -195,9 +196,28 @@ bot.on('message', async (msg) => {
           
           if (!downloadError && fileData) {
             const content = await fileData.text();
-            knowledgeBase += `\n--- Información de ${doc.name} ---\n${content}\n`;
+            // Dividir por párrafos gruesos
+            const chunks = content.split(/\n\s*\n/).filter(c => c.trim().length > 50);
+            
+            chunks.forEach(chunk => {
+              let score = 0;
+              const chunkLower = chunk.toLowerCase();
+              // Puntuación simple por coincidencia de palabras del usuario
+              userWords.forEach(word => {
+                if (chunkLower.includes(word)) score++;
+              });
+              allChunks.push({ name: doc.name, text: chunk.trim(), score });
+            });
           }
         }
+
+        // Ordenar por score y tomar los 3 fragmentos más relevantes
+        allChunks.sort((a, b) => b.score - a.score);
+        const topChunks = allChunks.slice(0, 3);
+        
+        topChunks.forEach(chunk => {
+          knowledgeBase += `\n--- Fragmento de ${chunk.name} ---\n${chunk.text}\n`;
+        });
       }
     } catch (ragErr) {
       console.error('Error en RAG:', ragErr);
@@ -208,11 +228,19 @@ bot.on('message', async (msg) => {
       ? `BASE DE CONOCIMIENTO PRIORITARIA:\n${knowledgeBase}\n\nInstrucción: Responde utilizando PRIMERO la información de la base de conocimiento arriba. Si no encuentras la respuesta ahí, usa tu conocimiento general.`
       : "";
 
-    const messagesForAI = [
+    let messagesForAI = [
       { role: 'system', content: `${fullSystemPrompt}\n\n${knowledgePrompt}` },
       ...history,
       { role: 'user', content: text }
     ];
+
+    // Limpieza de Tokens (estimación 1 token ≈ 4 caracteres). Límite 100k tokens = 400k caracteres.
+    let totalChars = JSON.stringify(messagesForAI).length;
+    while (totalChars > 400000 && messagesForAI.length > 2) {
+      // Eliminar el mensaje más antiguo (índice 1, después del system prompt que es índice 0)
+      messagesForAI.splice(1, 1);
+      totalChars = JSON.stringify(messagesForAI).length;
+    }
 
     // 8. Acción de 'typing' y Llamada a OpenRouter
     await bot.sendChatAction(chatId, 'typing');
@@ -264,7 +292,7 @@ bot.on('message', async (msg) => {
     }).eq('id', contact.id);
 
   } catch (error) {
-    console.error('🔴 Error Crítico en bot.js:', error.message);
-    bot.sendMessage(telegramId, '💠 Iris está procesando información... (Intenta en un momento)');
+    console.error('🔴 Error Crítico en bot.js:', error.message, error.stack);
+    bot.sendMessage(telegramId, `💠 Iris está procesando información... (Error: ${error.message})`);
   }
 });
