@@ -20,6 +20,8 @@ if (!TELEGRAM_TOKEN || !OPENROUTER_API_KEY || !VITE_SUPABASE_URL || !VITE_SUPABA
   process.exit(1);
 }
 
+console.log(`🔐 Key detectada: ${OPENROUTER_API_KEY.substring(0, 5)}... (Verificado)`);
+
 // --- CLIENTES ---
 const supabase = createClient(VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY);
 const bot = new TelegramBot(TELEGRAM_TOKEN, { 
@@ -49,14 +51,24 @@ const distPath = path.join(__dirname, 'dist');
 app.get('/api/balance', async (req, res) => {
   try {
     const response = await fetch('https://openrouter.ai/api/v1/auth/key', {
-      headers: { 'Authorization': `Bearer ${OPENROUTER_API_KEY}` }
+      headers: { 
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
     });
+    
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`❌ Error en Proxy OpenRouter (${response.status}):`, errText);
+      return res.status(response.status).json({ error: errText });
+    }
+
     const data = await response.json();
-    console.log('✅ Datos de OpenRouter recibidos con éxito');
+    console.log('✅ Datos de OpenRouter recibidos con éxito (Proxy OK)');
     res.json(data);
   } catch (error) {
-    console.error('❌ Error consultando saldo en OpenRouter:', error);
-    res.status(500).json({ error: 'Failed to fetch balance' });
+    console.error('❌ Error fatal en Proxy /api/balance:', error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -218,6 +230,7 @@ bot.on('message', async (msg) => {
 
     // 9. Persistir respuesta de IA con contador de tokens y actualizar contacto
     const tokensUsed = data.usage?.total_tokens || 0;
+    console.log(`🔥 [PRUEBA DE FUEGO] Tokens en esta respuesta: ${tokensUsed}`);
     
     await supabase.from('messages').insert([{
       contact_id: contact.id,
@@ -226,7 +239,7 @@ bot.on('message', async (msg) => {
       tokens: tokensUsed
     }]);
 
-    console.log(`📊 Consumo de la respuesta: ${tokensUsed} tokens.`);
+    console.log(`📊 Registro guardado en DB con ${tokensUsed} tokens.`);
 
     await supabase.from('contacts').update({ 
       last_interaction: new Date().toISOString() 
