@@ -195,14 +195,16 @@ bot.on('message', async (msg) => {
             .download(doc.storage_path);
           
           if (!downloadError && fileData) {
-            const content = await fileData.text();
-            // Dividir por párrafos gruesos
-            const chunks = content.split(/\n\s*\n/).filter(c => c.trim().length > 50);
+            const rawText = await fileData.text();
+            // Dividir forzosamente en fragmentos de ~2000 caracteres para evitar que un documento sin saltos de linea sature todo
+            const chunks = [];
+            for (let i = 0; i < rawText.length; i += 2000) {
+              chunks.push(rawText.substring(i, i + 2000));
+            }
             
             chunks.forEach(chunk => {
               let score = 0;
               const chunkLower = chunk.toLowerCase();
-              // Puntuación simple por coincidencia de palabras del usuario
               userWords.forEach(word => {
                 if (chunkLower.includes(word)) score++;
               });
@@ -218,6 +220,11 @@ bot.on('message', async (msg) => {
         topChunks.forEach(chunk => {
           knowledgeBase += `\n--- Fragmento de ${chunk.name} ---\n${chunk.text}\n`;
         });
+
+        // Límite duro a la base de conocimientos (aprox 2000 tokens)
+        if (knowledgeBase.length > 8000) {
+          knowledgeBase = knowledgeBase.substring(0, 8000) + '... (truncado)';
+        }
       }
     } catch (ragErr) {
       console.error('Error en RAG:', ragErr);
@@ -234,12 +241,16 @@ bot.on('message', async (msg) => {
       { role: 'user', content: text }
     ];
 
-    // Limpieza de Tokens (estimación 1 token ≈ 4 caracteres). Límite 100k tokens = 400k caracteres.
+    // Limpieza agresiva de Tokens (aprox 20k tokens = 80k caracteres). El límite de Nebius es 95k.
     let totalChars = JSON.stringify(messagesForAI).length;
-    while (totalChars > 400000 && messagesForAI.length > 2) {
-      // Eliminar el mensaje más antiguo (índice 1, después del system prompt que es índice 0)
+    while (totalChars > 80000 && messagesForAI.length > 2) {
       messagesForAI.splice(1, 1);
       totalChars = JSON.stringify(messagesForAI).length;
+    }
+
+    // Falla de seguridad si incluso después de borrar el historial supera el límite
+    if (JSON.stringify(messagesForAI).length > 80000) {
+      messagesForAI[0].content = messagesForAI[0].content.substring(0, 75000) + "... (truncado)";
     }
 
     // 8. Acción de 'typing' y Llamada a OpenRouter
