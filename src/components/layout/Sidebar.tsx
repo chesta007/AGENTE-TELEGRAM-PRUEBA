@@ -7,13 +7,14 @@ export function Sidebar({ activeTab, setActiveTab, darkMode }: { activeTab: stri
     { id: 'chats', label: 'Chats', icon: MessageSquare },
     { id: 'crm', label: 'CRM', icon: Users },
     { id: 'context', label: 'Contexto', icon: Settings },
+    { id: 'billing', label: 'Mi Consumo', icon: MessageSquare },
   ];
 
   return (
     <aside className={`w-72 p-6 flex flex-col transition-all duration-300 ${darkMode ? 'bg-[#0F172A] border-r border-white/10' : 'bg-[#0047FF] text-white shadow-2xl shadow-blue-500/20'}`}>
       <div className="mb-10 px-2">
         <h1 className="text-2xl font-black tracking-tight mb-1 flex items-center gap-2">
-           <span className={`${darkMode ? 'text-[#0047FF]' : 'text-white'}`}>Iris</span>
+           <span className={`${darkMode ? 'text-[#0047FF]' : 'text-white'}`}>Lemovil Bot</span>
            {!darkMode && <span className="p-1 px-2 bg-white text-[#0047FF] text-[10px] rounded-md font-bold uppercase">Pro</span>}
         </h1>
         <div className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest ${darkMode ? 'text-slate-500' : 'text-blue-100'}`}>
@@ -21,7 +22,7 @@ export function Sidebar({ activeTab, setActiveTab, darkMode }: { activeTab: stri
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
           </span>
-          Iris Online
+          Lemovil Bot Online
         </div>
       </div>
       

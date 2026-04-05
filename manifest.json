@@ -1,7 +1,7 @@
 {
-  "name": "Iris AI Command Center",
-  "short_name": "Iris AI",
-  "description": "Panel de control estratégico y monitoreo de Iris AI para Alcance.",
+  "name": "Lemovil Bot Command Center",
+  "short_name": "Lemovil Bot",
+  "description": "Panel de control estratégico y monitoreo de Lemovil Bot.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0047FF",

@@ -194,7 +194,7 @@ export function Chats() {
                   <Loader2 className="animate-spin text-[#0047FF]" />
                 </div>
               ) : messages.length === 0 ? (
-                <div className="text-center text-slate-400 text-sm mt-10">No hay mensajes. Iris está lista para responder.</div>
+                <div className="text-center text-slate-400 text-sm mt-10">No hay mensajes. Lemovil Bot está listo para responder.</div>
               ) : (
                 messages.map((m, idx) => {
                   const isAgent = m.sender === 'agent';
@@ -225,7 +225,7 @@ export function Chats() {
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 className="flex-1 bg-slate-50 border border-slate-200 p-3.5 px-5 rounded-full text-sm outline-none focus:ring-2 focus:ring-[#0047FF] focus:bg-white transition-all text-slate-900" 
-                placeholder="Escribe un mensaje a través de Iris..." 
+                placeholder="Escribe un mensaje a través de Lemovil Bot..." 
               />
               <button 
                 type="submit" 

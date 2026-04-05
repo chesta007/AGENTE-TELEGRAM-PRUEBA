@@ -15,12 +15,12 @@ import { Moon, Sun, LayoutDashboard, Users, FileText, MessageSquare } from 'luci
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [darkMode, setDarkMode] = useState(() => {
-    const saved = localStorage.getItem('iris-theme');
+    const saved = localStorage.getItem('lemovil-theme');
     return saved === 'dark';
   });
 
   useEffect(() => {
-    localStorage.setItem('iris-theme', darkMode ? 'dark' : 'light');
+    localStorage.setItem('lemovil-theme', darkMode ? 'dark' : 'light');
     if (darkMode) {
       document.documentElement.classList.add('dark');
     } else {
@@ -56,7 +56,7 @@ export default function App() {
       <div className="flex-1 flex flex-col overflow-hidden pb-16 md:pb-0">
         <header className={`h-16 flex items-center justify-between md:justify-end px-6 md:px-8 border-b transition-colors duration-300 z-10 ${darkMode ? 'bg-black/80 border-white/10 backdrop-blur-md' : 'bg-white/80 border-slate-100 backdrop-blur-md'}`}>
           <div className="md:hidden">
-             <h1 className="text-xl font-black tracking-tight"><span className="text-[#0047FF]">Iris</span> AI</h1>
+             <h1 className="text-xl font-black tracking-tight"><span className="text-[#0047FF]">Lemovil</span> Bot</h1>
           </div>
           
           <div className="flex items-center gap-4">

@@ -53,7 +53,8 @@ export function CRM({ darkMode }: { darkMode: boolean }) {
   const statusColors: any = {
     'Nuevo': 'bg-orange-500/10 text-orange-500 border-orange-500/20',
     'En contacto': 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
-    'Cliente': 'bg-rose-500/10 text-rose-500 border-rose-500/20'
+    'Cliente': 'bg-rose-500/10 text-rose-500 border-rose-500/20',
+    'HOT': 'bg-red-500/20 text-red-600 border-red-500/30'
   };
 
   return (
@@ -61,7 +62,7 @@ export function CRM({ darkMode }: { darkMode: boolean }) {
       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
         <div>
           <h2 className={`text-3xl md:text-4xl font-black tracking-tight ${darkMode ? 'text-white' : 'text-slate-900'}`}>CRM</h2>
-          <p className="text-slate-500 font-medium text-sm mt-1">Gestión de prospectos y clientes de Iris AI.</p>
+          <p className="text-slate-500 font-medium text-sm mt-1">Gestión de prospectos y clientes de Lemovil Bot's.</p>
         </div>
         <button 
           onClick={() => setIsAddOpen(true)}
@@ -73,9 +74,9 @@ export function CRM({ darkMode }: { darkMode: boolean }) {
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex gap-2 overflow-x-auto pb-2 md:pb-0 w-full md:w-auto scrollbar-hide">
-          {['Todos', 'Nuevo', 'En contacto', 'Cliente'].map(f => (
+          {['Todos', 'HOT', 'Nuevo', 'En contacto', 'Cliente'].map(f => (
             <button key={f} onClick={() => setFilter(f)} className={`whitespace-nowrap px-4 py-2 rounded-full text-xs font-bold transition-all ${filter === f ? 'bg-[#0047FF] text-white shadow-md' : (darkMode ? 'bg-zinc-800 text-slate-400 hover:bg-zinc-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200')}`}>
-              {f}
+              {f === 'HOT' ? '🔥 Leads Calientes' : f}
             </button>
           ))}
         </div>
@@ -107,19 +108,29 @@ export function CRM({ darkMode }: { darkMode: boolean }) {
                   {contacts.length === 0 ? (
                     <tr><td colSpan={5} className="p-20 text-center text-slate-500 font-medium italic">No hay contactos encontrados</td></tr>
                   ) : (
-                    contacts.map(c => (
-                      <tr key={c.id} onClick={() => setSelectedContact(c)} className={`hover:bg-blue-500/[0.02] cursor-pointer transition-all ${darkMode ? 'hover:bg-white/[0.02]' : 'hover:bg-slate-50'}`}>
-                        <td className="p-5 font-bold text-sm tracking-tight">{c.name}</td>
-                        <td className="p-5 text-sm text-slate-500">{c.phone}</td>
-                        <td className="p-5 text-sm text-slate-500">{c.city}</td>
-                        <td className="p-5">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border ${statusColors[c.status] || 'bg-slate-500/10 text-slate-500 border-slate-500/20'}`}>
-                            {c.status}
-                          </span>
-                        </td>
-                        <td className="p-5 text-sm text-slate-400 text-right font-medium">{c.last_interaction ? new Date(c.last_interaction).toLocaleDateString() : '-'}</td>
-                      </tr>
-                    ))
+                    contacts.map(c => {
+                      const isHot = c.status === 'HOT';
+                      return (
+                        <tr key={c.id} onClick={() => setSelectedContact(c)} className={`
+                          hover:bg-blue-500/[0.02] cursor-pointer transition-all 
+                          ${darkMode ? 'hover:bg-white/[0.02]' : 'hover:bg-slate-50'}
+                          ${isHot ? 'bg-red-500/[0.05] animate-pulse border-2 border-red-500/20 shadow-[0_0_15px_rgba(239,68,68,0.1)]' : ''}
+                        `}>
+                          <td className="p-5 font-bold text-sm tracking-tight flex items-center gap-2">
+                            {c.full_name || c.name}
+                            {isHot && <span className="animate-bounce">🔥</span>}
+                          </td>
+                          <td className="p-5 text-sm text-slate-500">{c.phone}</td>
+                          <td className="p-5 text-sm text-slate-500">{c.city}</td>
+                          <td className="p-5">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black border ${statusColors[c.status] || 'bg-slate-500/10 text-slate-500 border-slate-500/20'}`}>
+                              {c.status === 'HOT' ? '🔥 INTERESADO' : c.status}
+                            </span>
+                          </td>
+                          <td className="p-5 text-sm text-slate-400 text-right font-medium">{c.last_interaction ? new Date(c.last_interaction).toLocaleDateString() : '-'}</td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -130,17 +141,25 @@ export function CRM({ darkMode }: { darkMode: boolean }) {
               {contacts.length === 0 ? (
                 <div className="p-20 text-center text-slate-500 font-medium italic">No hay contactos encontrados</div>
               ) : (
-                contacts.map(c => (
-                  <div key={c.id} onClick={() => setSelectedContact(c)} className="p-5 active:bg-blue-500/5 transition-all">
-                    <div className="flex justify-between items-start mb-1">
-                      <h4 className="font-black text-lg tracking-tight">{c.name}</h4>
-                      <span className={`px-2.5 py-1 rounded-full text-[9px] font-black border uppercase tracking-wider ${statusColors[c.status] || 'bg-slate-500/10 text-slate-500 border-slate-500/20'}`}>
-                        {c.status}
-                      </span>
+                contacts.map(c => {
+                  const isHot = c.status === 'HOT';
+                  return (
+                    <div key={c.id} onClick={() => setSelectedContact(c)} 
+                      className={`p-5 active:bg-blue-500/5 transition-all ${isHot ? 'bg-red-500/[0.08] border-l-4 border-red-500' : ''}`}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <h4 className="font-black text-lg tracking-tight flex items-center gap-2">
+                          {c.full_name || c.name}
+                          {isHot && <span>🔥</span>}
+                        </h4>
+                        <span className={`px-2.5 py-1 rounded-full text-[9px] font-black border uppercase tracking-wider ${statusColors[c.status] || 'bg-slate-500/10 text-slate-500 border-slate-500/20'}`}>
+                          {c.status === 'HOT' ? 'INTERESADO' : c.status}
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-400 font-medium">{c.phone} • {c.city}</p>
                     </div>
-                    <p className="text-sm text-slate-400 font-medium">{c.phone} • {c.city}</p>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </>
