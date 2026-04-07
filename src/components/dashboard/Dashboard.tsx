@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { FileText, MessageSquare, Users, TrendingUp, Loader2, Sparkles, PieChart } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
+import { supabase, getDefaultOrgId } from '@/lib/supabase';
 import { PersonalityPanel } from '../agent/PersonalityPanel';
 
 export function Dashboard({ darkMode }: { darkMode: boolean }) {
@@ -21,53 +21,62 @@ export function Dashboard({ darkMode }: { darkMode: boolean }) {
 
   const fetchStats = async () => {
     try {
-      const { count: docsCount } = await supabase.from('documents').select('*', { count: 'exact', head: true });
-      
-      // 2. Chats últimas 24 horas (Evitar problemas de zona horaria)
+      // Obtener org default (BIGINT) para filtrar todas las métricas
+      const orgId = await getDefaultOrgId();
+
       const last24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const { count: msgCount } = await supabase.from('messages')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', last24h.toISOString());
-        
-      const { count: contactsCount } = await supabase.from('contacts').select('*', { count: 'exact', head: true });
 
-      // 4. Saldo y Nombre de la Organización (Tenant Context)
-      const { data: orgData } = await supabase.from('organizations').select('id, name, credit_balance').limit(1).single();
-      
-      // 5. Consumo Total desde usage_logs (Costo y Tokens)
-      const { data: usageData } = await supabase.from('usage_logs').select('cost_usd, tokens_used, created_at');
-      const totalSpending = (usageData || []).reduce((acc, curr) => acc + Number(curr.cost_usd), 0);
+      // Queries en paralelo por performance
+      const [docsResult, msgResult, contactsResult, orgResult, usageResult] = await Promise.all([
+        orgId !== null
+          ? supabase.from('documents').select('*', { count: 'exact', head: true }).eq('organization_id', orgId)
+          : supabase.from('documents').select('*', { count: 'exact', head: true }),
+        orgId !== null
+          ? supabase.from('messages').select('*', { count: 'exact', head: true }).gte('created_at', last24h.toISOString()).eq('organization_id', orgId)
+          : supabase.from('messages').select('*', { count: 'exact', head: true }).gte('created_at', last24h.toISOString()),
+        orgId !== null
+          ? supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('organization_id', orgId)
+          : supabase.from('contacts').select('*', { count: 'exact', head: true }),
+        supabase.from('organizations').select('id, name, credit_balance').eq('slug', 'default').maybeSingle(),
+        orgId !== null
+          ? supabase.from('usage_logs').select('cost_usd, tokens_used, created_at').eq('organization_id', orgId)
+          : supabase.from('usage_logs').select('cost_usd, tokens_used, created_at'),
+      ]);
 
-      // 6. Tokens este mes
+      const orgData   = orgResult.data;
+      const usageData = usageResult.data || [];
+
+      const totalSpending = usageData.reduce((acc, curr) => acc + Number(curr.cost_usd), 0);
+
       const startOfMonth = new Date();
       startOfMonth.setDate(1);
-      startOfMonth.setHours(0,0,0,0);
-      
-      const monthlyTokens = (usageData || [])
+      startOfMonth.setHours(0, 0, 0, 0);
+
+      const monthlyTokens = usageData
         .filter(u => new Date(u.created_at) >= startOfMonth)
         .reduce((acc, curr) => acc + (Number(curr.tokens_used) || 0), 0);
 
-      const totalTokens = (usageData || []).reduce((acc, curr) => acc + (Number(curr.tokens_used) || 0), 0);
+      const totalTokens = usageData.reduce((acc, curr) => acc + (Number(curr.tokens_used) || 0), 0);
 
 
-      setStats({ 
-        docs: docsCount || 0, 
-        messagesToday: msgCount || 0, 
-        contacts: contactsCount || 0, 
-        orgBalance: orgData?.credit_balance || 0,
-        orgName: orgData?.name || 'Empresa',
-        totalSpending: totalSpending,
-        monthlyTokens: monthlyTokens,
-        totalTokens: totalTokens 
+      setStats({
+        docs:          docsResult.count  || 0,
+        messagesToday: msgResult.count   || 0,
+        contacts:      contactsResult.count || 0,
+        orgBalance:    orgData?.credit_balance || 0,
+        orgName:       orgData?.name || 'Empresa',
+        totalSpending,
+        monthlyTokens,
+        totalTokens,
       });
 
-      if (orgData) setOrganizationId(orgData.id);
+      if (orgData?.id) setOrganizationId(String(orgData.id));
 
-      const { data: logs } = await supabase
-        .from('agent_tool_logs')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(5);
+      const logQuery = orgId !== null
+        ? supabase.from('agent_tool_logs').select('*').eq('organization_id', orgId).order('created_at', { ascending: false }).limit(5)
+        : supabase.from('agent_tool_logs').select('*').order('created_at', { ascending: false }).limit(5);
+
+      const { data: logs } = await logQuery;
       setToolLogs(logs || []);
     } catch (err) {
       console.error('Error fetching dashboard stats:', err);
