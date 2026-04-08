@@ -155,6 +155,8 @@ const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 bot.on('message', async (msg) => {
   if (!msg.text) return;
 
+  logger.info('Mensaje de Telegram recibido', { chatId: msg.chat.id, text: msg.text });
+
   processIncomingMessage({
     text: msg.text,
     channel: 'telegram',
