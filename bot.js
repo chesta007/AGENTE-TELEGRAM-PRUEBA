@@ -2,6 +2,11 @@ import 'dotenv/config';
 import TelegramBot from 'node-telegram-bot-api';
 import { createClient } from '@supabase/supabase-js';
 import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const {
   TELEGRAM_TOKEN,
@@ -9,61 +14,56 @@ const {
   VITE_SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   VITE_SUPABASE_ANON_KEY,
+  PORT = 3000,
   EVOLUTION_URL,
-  EVOLUTION_API_KEY,
-  PORT = 3000
+  EVOLUTION_API_KEY
 } = process.env;
 
 const supabase = createClient(VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY || VITE_SUPABASE_ANON_KEY);
 
 const logger = {
   info: (msg, meta = {}) => console.log(JSON.stringify({ level: 'INFO', msg, ...meta, ts: new Date().toISOString() })),
-  warn: (msg, meta = {}) => console.warn(JSON.stringify({ level: 'WARN', msg, ...meta, ts: new Date().toISOString() })),
   error: (msg, meta = {}) => console.error(JSON.stringify({ level: 'ERROR', msg, ...meta, ts: new Date().toISOString() })),
 };
 
 const ACTIVE_MODEL = 'meta-llama/llama-3.1-8b-instruct';
 
 // ============================================================
-// MIDDLEWARE DE CRÉDITO Y ORGANIZACIÓN
+// MOTOR NEUTRO - Carga prompt desde la base de datos
 // ============================================================
-async function checkOrganizationAndCredit(orgSlug = 'default') {
-  const { data: org, error } = await supabase
+async function getSystemPrompt(orgId) {
+  const { data } = await supabase
+    .from('bot_settings')
+    .select('current_prompt')
+    .eq('organization_id', orgId)
+    .maybeSingle();
+
+  const basePrompt = "Eres un asistente profesional, inteligente y útil. Mantén memoria de la conversación y responde de forma natural y coherente.";
+
+  return data?.current_prompt ? `${basePrompt}\n\n${data.current_prompt}` : basePrompt;
+}
+
+async function processIncomingMessage({ text, channel, orgSlug = 'default', externalId, firstName = 'Usuario', replyFn }) {
+  logger.info('Mensaje recibido', { channel, orgSlug, externalId });
+
+  // 1. Obtener organización
+  const { data: org, error: orgError } = await supabase
     .from('organizations')
     .select('*')
     .eq('slug', orgSlug)
     .single();
 
-  if (error || !org) {
+  if (orgError || !org) {
     logger.error('Organización no encontrada', { orgSlug });
-    return null;
-  }
-
-  if (org.status !== 'active') {
-    logger.warn('Organización inactiva', { slug: org.slug });
-    return { ...org, blocked: true, reason: 'Servicio pausado por el administrador' };
+    return replyFn('⚠️ Error de configuración. Contacta soporte.');
   }
 
   if (Number(org.credit_balance) <= 0) {
-    logger.warn('Sin crédito disponible', { slug: org.slug });
-    return { ...org, blocked: true, reason: 'Sin créditos disponibles' };
+    return replyFn('⚠️ No tienes créditos disponibles. Recarga tu saldo.');
   }
 
-  return org;
-}
-
-// ============================================================
-// MOTOR CENTRAL: PROCESAR MENSAJE (Telegram + WhatsApp)
-// ============================================================
-async function processIncomingMessage({ text, channel, orgSlug = 'default', externalId, firstName = 'Usuario', replyFn }) {
-  logger.info('Mensaje recibido', { channel, externalId, orgSlug });
-
-  const org = await checkOrganizationAndCredit(orgSlug);
-  if (!org) return replyFn('⚠️ Error interno. Inténtalo más tarde.');
-  if (org.blocked) return replyFn(`⚠️ ${org.reason}. Contacta a soporte.`);
-
   try {
-    // Buscar o crear contacto
+    // 2. Obtener o crear contacto
     let { data: contact } = await supabase
       .from('contacts')
       .select('*')
@@ -76,48 +76,37 @@ async function processIncomingMessage({ text, channel, orgSlug = 'default', exte
         full_name: firstName,
         phone: externalId,
         organization_id: org.id,
-        source: channel,
-        lead_stage: 'new'
+        source: channel
       }]).select().single();
       contact = newContact;
     }
 
-    // Guardar mensaje del usuario
+    // 3. Guardar mensaje del usuario
     await supabase.from('messages').insert([{
-      contact_id: contact.id,
       organization_id: org.id,
+      contact_id: contact.id,
       content: text,
       sender: 'user',
-      channel: channel,
-      lead_stage: contact.lead_stage
+      channel: channel
     }]);
 
-    // Historial para contexto
-    const { data: historyData } = await supabase
+    // 4. Cargar prompt dinámico + historial
+    const systemPrompt = await getSystemPrompt(org.id);
+
+    const { data: history } = await supabase
       .from('messages')
       .select('content, sender')
       .eq('contact_id', contact.id)
       .order('created_at', { ascending: false })
       .limit(8);
 
-    const messagesForAI = (historyData || []).reverse().map(m => ({
+    const messagesForAI = (history || []).reverse().map(m => ({
       role: m.sender === 'user' ? 'user' : 'assistant',
       content: m.content
     }));
 
-    const systemPrompt = `Eres un asesor comercial experto de Alcance AI.
-Sigue estrictamente este embudo de 5 etapas:
-1. Saludo contextual (no repitas "hola" si ya hablaste antes)
-2. Captura de datos (nombre, ciudad, interés)
-3. Presentación de valor y planes
-4. Manejo de objeciones con empatía
-5. Cierre + detección de intención fuerte
-
-Si detectas alta intención de compra, incluye el tag ###HOT_LEAD### al final de tu respuesta.
-
-Datos del cliente: Nombre="${contact.full_name || 'Usuario'}", Etapa actual="${contact.lead_stage}".`;
-
-    const aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    // 5. Llamada al LLM
+    const aiResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -129,54 +118,44 @@ Datos del cliente: Nombre="${contact.full_name || 'Usuario'}", Etapa actual="${c
       })
     });
 
-    const aiData = await aiResponse.json();
-    let llmText = aiData.choices?.[0]?.message?.content || "Lo siento, tuve un problema técnico.";
+    const aiData = await aiResp.json();
+    const responseText = aiData.choices?.[0]?.message?.content || "Lo siento, no pude procesar tu mensaje.";
 
-    const isHotLead = llmText.includes('###HOT_LEAD###');
-    const finalText = llmText.replace('###HOT_LEAD###', '').trim();
+    // 6. Responder al usuario
+    await replyFn(responseText);
 
-    if (isHotLead) {
-      logger.info('🔥 HOT LEAD DETECTADO', { contactId: contact.id });
-      await supabase.from('contacts').update({ lead_stage: 'hot' }).eq('id', contact.id);
-    }
-
-    // Responder al usuario
-    await replyFn(finalText);
-
-    // Guardar respuesta del agente
+    // 7. Guardar respuesta del agente
     await supabase.from('messages').insert([{
-      contact_id: contact.id,
       organization_id: org.id,
-      content: finalText,
+      contact_id: contact.id,
+      content: responseText,
       sender: 'agent',
-      channel: channel,
-      lead_stage: isHotLead ? 'hot' : contact.lead_stage
+      channel: channel
     }]);
 
-    // Actualizar crédito
+    // 8. Actualizar crédito
     const usage = aiData.usage || { prompt_tokens: 0, completion_tokens: 0 };
-    const cost = ((usage.prompt_tokens || 0) + (usage.completion_tokens || 0)) * 0.000000055;
-    const newBalance = Number(org.credit_balance) - cost;
+    const cost = (usage.prompt_tokens + usage.completion_tokens) * 0.000000055;
 
-    await supabase.from('organizations').update({ credit_balance: newBalance }).eq('id', org.id);
+    await supabase.from('organizations').update({
+      credit_balance: Number(org.credit_balance) - cost
+    }).eq('id', org.id);
 
-    logger.info('Mensaje procesado correctamente', { orgSlug, channel, cost: cost.toFixed(6) });
+    logger.info('Mensaje procesado correctamente', { cost: cost.toFixed(6) });
 
   } catch (err) {
     logger.error('Error en processIncomingMessage', { error: err.message });
-    await replyFn('Lo siento, tuve un problema técnico. ¿Puedes repetirlo?');
+    replyFn('Lo siento, ocurrió un error técnico. Inténtalo de nuevo.');
   }
 }
 
-// ============================================================
-// TELEGRAM
-// ============================================================
+// ====================== TELEGRAM ======================
 const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
 
 bot.on('message', async (msg) => {
   if (!msg.text) return;
 
-  await processIncomingMessage({
+  processIncomingMessage({
     text: msg.text,
     channel: 'telegram',
     orgSlug: 'default',
@@ -186,14 +165,16 @@ bot.on('message', async (msg) => {
   });
 });
 
-// ============================================================
-// WHATSAPP - EVOLUTION API WEBHOOK
-// ============================================================
+// ====================== WHATSAPP - EVOLUTION API ======================
 const app = express();
 app.use(express.json());
 
+// Servir el frontend estático (importante para que el Dashboard se vea)
+app.use(express.static(path.join(__dirname, 'dist')));
+
+// Webhook Evolution
 app.post('/webhook/evolution', async (req, res) => {
-  res.sendStatus(200); // Responder rápido
+  res.sendStatus(200);
 
   try {
     const payload = req.body;
@@ -207,19 +188,18 @@ app.post('/webhook/evolution', async (req, res) => {
 
     const instanceId = payload.instance;
 
-    // Buscar organización por instanceId de WhatsApp
     const { data: org } = await supabase
       .from('organizations')
       .select('slug')
       .eq('whatsapp_instance_id', instanceId)
       .maybeSingle();
 
-    await processIncomingMessage({
-      text: text,
+    processIncomingMessage({
+      text,
       channel: 'whatsapp',
       orgSlug: org?.slug || 'default',
       externalId: phone,
-      firstName: data.pushName || 'Usuario WhatsApp',
+      firstName: data.pushName || 'Usuario WA',
       replyFn: async (msgText) => {
         if (!EVOLUTION_URL || !EVOLUTION_API_KEY) return;
         await fetch(`${EVOLUTION_URL}/message/sendText/${instanceId}`, {
@@ -234,6 +214,11 @@ app.post('/webhook/evolution', async (req, res) => {
   }
 });
 
+// Ruta por defecto para el frontend (SPA)
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
 app.listen(PORT, () => {
-  logger.info(`🚀 Alcance AI V6.5 iniciado - Escuchando en puerto ${PORT}`);
+  logger.info(`🚀 Alcance AI Motor Neutro V6.8 iniciado - Puerto ${PORT}`);
 });
