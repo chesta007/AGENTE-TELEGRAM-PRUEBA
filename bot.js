@@ -1,226 +1,181 @@
 import 'dotenv/config';
-import TelegramBot from 'node-telegram-bot-api';
-import { createClient } from '@supabase/supabase-js';
 import express from 'express';
+import TelegramBot from 'node-telegram-bot-api';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { db } from './lib/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const {
-  TELEGRAM_TOKEN,
-  OPENROUTER_API_KEY,
-  VITE_SUPABASE_URL,
-  SUPABASE_SERVICE_ROLE_KEY,
-  VITE_SUPABASE_ANON_KEY,
-  PORT = 3000,
-  EVOLUTION_URL,
-  EVOLUTION_API_KEY
-} = process.env;
+// --- CONFIGURATION ---
+const PORT = process.env.PORT || 3000;
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const DEFAULT_ORG_ID = 'default';
 
-const supabase = createClient(VITE_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY || VITE_SUPABASE_ANON_KEY);
-
-const logger = {
-  info: (msg, meta = {}) => console.log(JSON.stringify({ level: 'INFO', msg, ...meta, ts: new Date().toISOString() })),
-  error: (msg, meta = {}) => console.error(JSON.stringify({ level: 'ERROR', msg, ...meta, ts: new Date().toISOString() })),
-};
-
-const ACTIVE_MODEL = 'meta-llama/llama-3.1-8b-instruct';
-
-// ============================================================
-// MOTOR NEUTRO - Carga prompt desde la base de datos
-// ============================================================
-async function getSystemPrompt(orgId) {
-  const { data } = await supabase
-    .from('bot_settings')
-    .select('current_prompt')
-    .eq('organization_id', orgId)
-    .maybeSingle();
-
-  const basePrompt = "Eres un asistente profesional, inteligente y útil. Mantén memoria de la conversación y responde de forma natural y coherente.";
-
-  return data?.current_prompt ? `${basePrompt}\n\n${data.current_prompt}` : basePrompt;
+if (!GEMINI_API_KEY) {
+  console.error("❌ CRITICAL: GEMINI_API_KEY is missing in .env");
+  process.exit(1);
 }
 
-async function processIncomingMessage({ text, channel, orgSlug = 'default', externalId, firstName = 'Usuario', replyFn }) {
-  logger.info('Mensaje recibido', { channel, orgSlug, externalId });
-
-  // 1. Obtener organización
-  const { data: org, error: orgError } = await supabase
-    .from('organizations')
-    .select('*')
-    .eq('slug', orgSlug)
-    .single();
-
-  if (orgError || !org) {
-    logger.error('Organización no encontrada', { orgSlug });
-    return replyFn('⚠️ Error de configuración. Contacta soporte.');
-  }
-
-  if (Number(org.credit_balance) <= 0) {
-    return replyFn('⚠️ No tienes créditos disponibles. Recarga tu saldo.');
-  }
-
-  try {
-    // 2. Obtener o crear contacto
-    let { data: contact } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('phone', externalId)
-      .eq('organization_id', org.id)
-      .maybeSingle();
-
-    if (!contact) {
-      const { data: newContact } = await supabase.from('contacts').insert([{
-        full_name: firstName,
-        phone: externalId,
-        organization_id: org.id,
-        source: channel
-      }]).select().single();
-      contact = newContact;
-    }
-
-    // 3. Guardar mensaje del usuario
-    await supabase.from('messages').insert([{
-      organization_id: org.id,
-      contact_id: contact.id,
-      content: text,
-      sender: 'user',
-      channel: channel
-    }]);
-
-    // 4. Cargar prompt dinámico + historial
-    const systemPrompt = await getSystemPrompt(org.id);
-
-    const { data: history } = await supabase
-      .from('messages')
-      .select('content, sender')
-      .eq('contact_id', contact.id)
-      .order('created_at', { ascending: false })
-      .limit(8);
-
-    const messagesForAI = (history || []).reverse().map(m => ({
-      role: m.sender === 'user' ? 'user' : 'assistant',
-      content: m.content
-    }));
-
-    // 5. Llamada al LLM
-    const aiResp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`
-      },
-      body: JSON.stringify({
-        model: ACTIVE_MODEL,
-        messages: [{ role: 'system', content: systemPrompt }, ...messagesForAI, { role: 'user', content: text }]
-      })
-    });
-
-    const aiData = await aiResp.json();
-    const responseText = aiData.choices?.[0]?.message?.content || "Lo siento, no pude procesar tu mensaje.";
-
-    // 6. Responder al usuario
-    await replyFn(responseText);
-
-    // 7. Guardar respuesta del agente
-    await supabase.from('messages').insert([{
-      organization_id: org.id,
-      contact_id: contact.id,
-      content: responseText,
-      sender: 'agent',
-      channel: channel
-    }]);
-
-    // 8. Actualizar crédito
-    const usage = aiData.usage || { prompt_tokens: 0, completion_tokens: 0 };
-    const cost = (usage.prompt_tokens + usage.completion_tokens) * 0.000000055;
-
-    await supabase.from('organizations').update({
-      credit_balance: Number(org.credit_balance) - cost
-    }).eq('id', org.id);
-
-    logger.info('Mensaje procesado correctamente', { cost: cost.toFixed(6) });
-
-  } catch (err) {
-    logger.error('Error en processIncomingMessage', { error: err.message });
-    replyFn('Lo siento, ocurrió un error técnico. Inténtalo de nuevo.');
-  }
-}
-
-// ====================== TELEGRAM ======================
-const bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
-
-bot.on('message', async (msg) => {
-  if (!msg.text) return;
-
-  logger.info('Mensaje de Telegram recibido', { chatId: msg.chat.id, text: msg.text });
-
-  processIncomingMessage({
-    text: msg.text,
-    channel: 'telegram',
-    orgSlug: 'default',
-    externalId: msg.chat.id.toString(),
-    firstName: msg.from?.first_name || 'Usuario',
-    replyFn: (text) => bot.sendMessage(msg.chat.id, text)
-  });
-});
-
-// ====================== WHATSAPP - EVOLUTION API ======================
+// --- INITIALIZATION ---
 const app = express();
 app.use(express.json());
 
-// Servir el frontend estático (importante para que el Dashboard se vea)
+// Serve static files from dist
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// Webhook Evolution
-app.post('/webhook/evolution', async (req, res) => {
-  res.sendStatus(200);
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+let bot;
 
+if (TELEGRAM_TOKEN) {
+  bot = new TelegramBot(TELEGRAM_TOKEN, { polling: true });
+  console.log("✅ Telegram Bot initialized (Polling)");
+} else {
+  console.warn("⚠️ TELEGRAM_TOKEN missing. Telegram features will be disabled.");
+}
+
+// --- CORE AI LOGIC ---
+async function getAIResponse(orgId, chatHistory, lastMessage) {
   try {
-    const payload = req.body;
-    const data = payload.data || payload;
+    const settings = await db.getSettings();
+    const org = await db.findOrganization(orgId);
+    
+    if (!org || org.credits <= 0) {
+      return "⚠️ Lo siento, esta organización no tiene créditos suficientes para procesar tu solicitud.";
+    }
 
-    if (payload.event !== 'messages.upsert' || data?.key?.fromMe) return;
-
-    const phone = (data.key.remoteJid || '').replace('@s.whatsapp.net', '').replace('@c.us', '');
-    const text = data.message?.conversation || data.message?.extendedTextMessage?.text || '';
-    if (!text) return;
-
-    const instanceId = payload.instance;
-
-    const { data: org } = await supabase
-      .from('organizations')
-      .select('slug')
-      .eq('whatsapp_instance_id', instanceId)
-      .maybeSingle();
-
-    processIncomingMessage({
-      text,
-      channel: 'whatsapp',
-      orgSlug: org?.slug || 'default',
-      externalId: phone,
-      firstName: data.pushName || 'Usuario WA',
-      replyFn: async (msgText) => {
-        if (!EVOLUTION_URL || !EVOLUTION_API_KEY) return;
-        await fetch(`${EVOLUTION_URL}/message/sendText/${instanceId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': EVOLUTION_API_KEY },
-          body: JSON.stringify({ number: phone, text: msgText })
-        });
-      }
+    const model = genAI.getGenerativeModel({ model: settings.ai_model || "gemini-1.5-flash" });
+    
+    // Construct System Prompt
+    const systemPrompt = `${settings.default_prompt}\n\nEspecífico para esta cuenta: ${org.personality_prompt || ''}`;
+    
+    // Prepare conversation
+    const chat = model.startChat({
+      history: chatHistory.slice(-10).map(msg => ({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: msg.content }],
+      })),
+      generationConfig: {
+        maxOutputTokens: settings.max_tokens || 1000,
+        temperature: settings.temperature || 0.7,
+      },
     });
-  } catch (err) {
-    logger.error('Error en webhook Evolution', { error: err.message });
+
+    // Credit usage check middleware (atomic decrement)
+    await db.updateOrganizationCredits(orgId, -1);
+
+    const result = await chat.sendMessage(lastMessage);
+    const response = await result.response;
+    const aiText = response.text();
+
+    // Log usage
+    const logs = await db.getUsageLogs();
+    logs.push({
+      org_id: orgId,
+      amount: -1,
+      type: 'ai_response',
+      timestamp: new Date().toISOString()
+    });
+    await db.saveUsageLogs(logs);
+
+    return aiText;
+  } catch (error) {
+    console.error("LLM Error:", error);
+    return "Ups, tuve un problema procesando tu mensaje. Intenta de nuevo más tarde.";
   }
+}
+
+// --- MESSAGE HANDLING ---
+async function processMessage(orgId, channel, externalId, text, contactName) {
+  console.log(`[${channel}] Message from ${contactName} (${externalId}): ${text}`);
+  
+  // 1. Get or Create Contact
+  const contacts = await db.getContacts();
+  let contact = contacts.find(c => c.external_id === externalId && c.org_id === orgId);
+  if (!contact) {
+    contact = { 
+      id: Date.now().toString(), 
+      org_id: orgId, 
+      external_id: externalId, 
+      name: contactName, 
+      channel 
+    };
+    contacts.push(contact);
+    await db.saveContacts(contacts);
+  }
+
+  // 2. Get history
+  const allMessages = await db.getMessages();
+  const history = allMessages.filter(m => m.contact_id === contact.id);
+
+  // 3. AI call
+  const aiReply = await getAIResponse(orgId, history, text);
+
+  // 4. Save messages
+  const userMsg = { role: 'user', content: text, contact_id: contact.id, timestamp: new Date().toISOString() };
+  const assistantMsg = { role: 'assistant', content: aiReply, contact_id: contact.id, timestamp: new Date().toISOString() };
+  allMessages.push(userMsg, assistantMsg);
+  await db.saveMessages(allMessages);
+
+  return aiReply;
+}
+
+// --- CHANNELS ---
+
+// 1. Telegram
+if (bot) {
+  bot.on('message', async (msg) => {
+    if (!msg.text) return;
+    const reply = await processMessage(DEFAULT_ORG_ID, 'telegram', msg.chat.id.toString(), msg.text, msg.from.first_name || 'User');
+    bot.sendMessage(msg.chat.id, reply);
+  });
+}
+
+// 2. WhatsApp (Evolution API Webhook)
+app.post('/webhook/evolution', async (req, res) => {
+  const data = req.body;
+  
+  // Evolution API typically sends event: "messages.upsert"
+  if (data.event === "messages.upsert") {
+    const messageData = data.data;
+    const isFromMe = messageData.key.fromMe;
+    const text = messageData.message?.conversation || messageData.message?.extendedTextMessage?.text;
+    const remoteJid = messageData.key.remoteJid;
+    const pushName = messageData.pushName || 'WhatsApp User';
+
+    if (text && !isFromMe) {
+      // For multi-tenant, map 'instance' name to an Org
+      // Using 'default' for now as placeholder
+      const reply = await processMessage(DEFAULT_ORG_ID, 'whatsapp', remoteJid, text, pushName);
+      
+      // Evolution API responds to its own message via external API call, 
+      // but here we just process then you'd call Evolution's /message/send endpoint
+      console.log(`REPLY to ${remoteJid}: ${reply}`);
+      // NOTE: Here you would ideally call Evolution API to send the message back.
+    }
+  }
+  
+  res.sendStatus(200);
 });
 
-// Ruta por defecto para el frontend (SPA)
+// --- API ROUTES (Management) ---
+app.get('/api/stats', async (req, res) => {
+  const org = await db.findOrganization(DEFAULT_ORG_ID);
+  res.json({ credits: org?.credits || 0 });
+});
+
+// Health Check
+app.get('/health', (res) => res.send('OK'));
+
+// Serve Frontend for all other routes
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  logger.info(`🚀 Alcance AI Motor Neutro V6.8 iniciado - Puerto ${PORT}`);
+// --- SERVER START ---
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 Server running on http://0.0.0.0:${PORT}`);
 });

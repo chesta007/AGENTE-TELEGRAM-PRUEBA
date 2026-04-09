@@ -1,0 +1,21 @@
+{
+  "name": "Lemovil Bot Command Center",
+  "short_name": "Lemovil Bot",
+  "description": "Panel de control estratégico y monitoreo de Lemovil Bot.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0047FF",
+  "theme_color": "#0047FF",
+  "icons": [
+    {
+      "src": "https://alcance.com.ar/wp-content/uploads/2023/10/cropped-favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "https://alcance.com.ar/wp-content/uploads/2023/10/cropped-favicon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+[
+  {
+    "id": "default",
+    "name": "Alcance AI Default",
+    "credits": 1000,
+    "api_key": "sk-default-key",
+    "telegram_token": "",
+    "whatsapp_webhook_secret": "secret123",
+    "personality_prompt": "Eres Iris, la asistente oficial de Alcance AI. Tu tono es profesional y servicial."
+  }
+]

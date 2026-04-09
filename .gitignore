@@ -1,14 +1,5 @@
 node_modules/
-build/
-dist/
-coverage/
-.DS_Store
-*.log
-.env*
-!.env.example
-.railway/
-.tmp/
-tmp/
+.env
 *.tmp
-.cache/
-.npm/
+data/*.tmp
+# dist/ ha sido eliminado para permitir commitear el frontend compilado
