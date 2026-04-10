@@ -1,11 +1,10 @@
 -- ================================================
--- ALCANCE AI V6.3 - FINAL SAFE MIGRATION
+-- ALCANCE AI V6.5 - SAFE MIGRATION (No recreate existing tables)
 -- ================================================
 
--- 1. Extensiones
+-- 1. Extensiones y ENUMs
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 2. ENUMs
 DO $$ 
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'organization_status') THEN
@@ -16,7 +15,7 @@ BEGIN
     END IF;
 END $$;
 
--- 3. Organizations
+-- 2. Organizations (solo crear si no existe)
 CREATE TABLE IF NOT EXISTS organizations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
@@ -30,43 +29,16 @@ CREATE TABLE IF NOT EXISTS organizations (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Core Tables
-CREATE TABLE IF NOT EXISTS contacts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    full_name TEXT,
-    phone TEXT,
-    city TEXT,
-    source TEXT,
-    lead_stage TEXT DEFAULT 'new',
-    notes TEXT,
-    last_interaction TIMESTAMPTZ DEFAULT NOW(),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    UNIQUE(phone, organization_id)
-);
+-- 3. Agregar organization_id a tablas existentes (safe add)
+ALTER TABLE contacts ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE messages ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE;
+ALTER TABLE bot_settings ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE UNIQUE;
 
-CREATE TABLE IF NOT EXISTS messages (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE,
-    content TEXT NOT NULL,
-    sender TEXT NOT NULL,
-    channel message_channel NOT NULL,
-    external_id TEXT,
-    lead_stage TEXT,
-    tokens INTEGER DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- 4. Corregir usage_logs (recrear correctamente con UUID)
+DROP TABLE IF EXISTS usage_logs CASCADE;
 
-CREATE TABLE IF NOT EXISTS documents (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    content TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS usage_logs (
+CREATE TABLE usage_logs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     tokens_used INTEGER NOT NULL,
@@ -77,23 +49,13 @@ CREATE TABLE IF NOT EXISTS usage_logs (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS bot_settings (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE UNIQUE,
-    warmth INTEGER DEFAULT 7,
-    humor INTEGER DEFAULT 3,
-    closing_aggressiveness INTEGER DEFAULT 5,
-    use_emojis BOOLEAN DEFAULT TRUE,
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
 -- 5. Índices
 CREATE INDEX IF NOT EXISTS idx_contacts_org ON contacts(organization_id);
 CREATE INDEX IF NOT EXISTS idx_messages_org ON messages(organization_id);
 CREATE INDEX IF NOT EXISTS idx_usage_org ON usage_logs(organization_id);
 CREATE INDEX IF NOT EXISTS idx_whatsapp_instance ON organizations(whatsapp_instance_id);
 
--- 6. Trigger for updated_at
+-- 6. Trigger updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -138,4 +100,4 @@ CREATE POLICY "Dev Allow All" ON documents FOR ALL USING (true);
 CREATE POLICY "Dev Allow All" ON usage_logs FOR ALL USING (true);
 CREATE POLICY "Dev Allow All" ON bot_settings FOR ALL USING (true);
 
-SELECT '✅ Migración V6.3 ejecutada correctamente - Todas las tablas creadas y corregidas' AS resultado;
+SELECT '✅ Migración V6.5 SAFE ejecutada correctamente' AS resultado;
