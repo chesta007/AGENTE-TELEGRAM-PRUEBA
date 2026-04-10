@@ -1,5 +1,18 @@
 node_modules/
+dist/
 .env
+*.log
+data/*.json
+!data/.keep
+.DS_Store
+*.zip
 *.tmp
-data/*.tmp
-# dist/ ha sido eliminado para permitir commitear el frontend compilado
+ts_*.txt
+node_build*.log
+build_err*.log
+# Mantener archivos de configuración
+!.dockerignore
+!.gitignore
+!package.json
+!bot.js
+!lib/

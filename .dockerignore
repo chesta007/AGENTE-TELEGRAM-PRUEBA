@@ -1,0 +1,48 @@
+# .dockerignore - Optimizado para Railway (Alcance AI)
+
+# Ignorar todo lo que no se necesita en producción
+.git
+.gitignore
+.github
+.vscode
+.idea
+
+# Archivos de desarrollo
+.env
+.env.local
+.env.example
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependencias
+node_modules
+
+# Código fuente (solo se necesita dist/)
+src/
+vite.config.*
+tsconfig.*
+tailwind.config.*
+postcss.config.*
+components.json
+
+# Tests y coverage
+coverage/
+__tests__/
+test/
+
+# Documentación (opcional, pero ahorra espacio)
+README.md
+RAILWAY_GUIDE.md
+optimization_plan.md
+
+# Temporales
+.tmp
+*.tmp
+data/*.tmp
+dist.zip
+build/
+
+# Solo mantener la carpeta dist/ compilada
+!dist/
